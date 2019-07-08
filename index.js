@@ -110,7 +110,7 @@ app.post('/', upload.single('thumb'), async (req, res, next) => {
 
   let location = '';
 
-  if (isVideo) {
+  if (isVideo && payload.Player && payload.Player.publicAddress) {
     location = await getLocation(payload.Player.publicAddress);
   }
 
@@ -219,8 +219,6 @@ function notifySlack(imageUrl, payload, location, action) {
 
   // DKTODO: temporary fix
   const title = formatTitle(payload.Metadata);
-
-  console.log('notifySlack', 'imageUrl', imageUrl);
 
   slack.webhook({
     slackChannel,
