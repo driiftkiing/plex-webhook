@@ -220,6 +220,8 @@ function notifySlack(imageUrl, payload, location, action) {
   // DKTODO: temporary fix
   const title = formatTitle(payload.Metadata);
 
+  console.log('notifySlack', 'imageUrl', imageUrl);
+
   slack.webhook({
     slackChannel,
     username: 'Plex',
