@@ -91,134 +91,133 @@ app.listen(port, () => console.log(`Express app running at http://localhost:${po
 // main route
 
 app.post('/', upload.single('thumb'), async (req, res, next) => {
-    const payload = JSON.parse(req.body.payload);
+  const payload = JSON.parse(req.body.payload);
 
-    const isVideo = isLibrarySectionTypeVideo(payload);
-    const isMusic = isLibrarySectionTypeMusic(payload);
-    const key = generateImageKey(payload);
+  const isVideo = isLibrarySectionTypeVideo(payload);
+  const isMusic = isLibrarySectionTypeMusic(payload);
+  const key = generateImageKey(payload);
 
-    // missing required properties
-    if (!payload.Metadata || !(isMusic || isVideo)) {
-        console.error('[APP]', `Missing required properties`);
+  // missing required properties
+  if (!payload.Metadata || !(isMusic || isVideo)) {
+    console.error('[APP]', `Missing required properties`);
 
-        // DKTODO: temporary logging to slack
-        slack.webhook(
-            {
-                slackChannel,
-                username: 'Plex',
-                icon_emoji: ':plex:',
-                attachments: [{
-                    color: '#a67a2d',
-                    title: 'Debugging',
-                    text: req.body.payload
-                }]
-            },
-            () => null
-        );
+    // DKTODO: temporary logging to slack
+    slack.webhook(
+      {
+        slackChannel,
+        username: 'Plex',
+        icon_emoji: ':plex:',
+        attachments: [{
+          color: '#a67a2d',
+          title: 'Debugging',
+          text: req.body.payload
+        }]
+      },
+      () => null
+    );
 
-        next(createErrorMessage(400, 'Bad Request'));
-        return;
-    }
+    next(createErrorMessage(400, 'Bad Request'));
+    return;
+  }
 
-    if (isMediaPause(payload.event) || isMediaStop(payload.event) || isMediaResume(payload.event) || isPlaybackStarted(payload.event)) {
-        console.warn('[APP]', `Event type is: "${payload.event}".  Will be ignored.`);
-
-        return res.json(createMessage(200, 'OK'));
-    }
-
-    if (
-        isNewMediaAdded(payload.event) || isNewMediaAddedOnDeck(payload.event)
-        || isNewDeviceAdded(payload.event)
-        || isDatabaseBackupCompleted(payload.event) || isDatabaseCorrupted(payload.event)
-    ) {
-        console.warn('[APP]', `Event type is: "${payload.event}".  Will be ignored.`);
-
-        return res.json(createMessage(200, 'OK'));
-    }
-
-
-    // retrieve cached image
-    let image = await redis.getBuffer(key);
-
-    // save new image
-    if (!image && req.file && req.file.buffer) {
-        console.log('[REDIS]', `Saving new image ${key}`);
-        image = await sharp(req.file.buffer)
-            .resize(75, 75)
-            .background('white')
-            .embed()
-            .toBuffer();
-
-        redis.set(key, image, 'EX', SEVEN_DAYS);
-    } else {
-        console.log('[REDIS]', `Using cached image ${key}`);
-    }
-
-    let location = '';
-
-    if (isVideo && payload.Player && payload.Player.publicAddress) {
-        location = await getLocation(payload.Player.publicAddress);
-    }
-
-    const action = getAction(payload);
-
-    // post to slack
-    if (postToSlack) {
-        if (image) {
-            console.log('[SLACK]', `Sending ${key} with image`);
-            notifySlack(appURL + '/images/' + key, payload, location, action);
-        } else {
-            console.log('[SLACK]', `Sending ${key} without image`);
-            notifySlack(null, payload, location, action);
-        }
-    }
-
-    // post to discord
-    if (postToDiscord) {
-        if (image) {
-            console.log('[DISCORD]', `Sending ${key} with image`);
-            notifyDiscord(appURL + '/images/' + key, payload, location, action);
-        } else {
-            console.log('[DISCORD]', `Sending ${key} without image`);
-            notifyDiscord(null, payload, location, action);
-        }
-    }
+  if (isMediaPause(payload.event) || isMediaStop(payload.event) || isMediaResume(payload.event) || isPlaybackStarted(payload.event)) {
+    console.warn('[APP]', `Event type is: "${payload.event}".  Will be ignored.`);
 
     return res.json(createMessage(200, 'OK'));
+  }
+
+  if (
+    isNewMediaAdded(payload.event) || isNewMediaAddedOnDeck(payload.event) ||
+    isNewDeviceAdded(payload.event) ||
+    isDatabaseBackupCompleted(payload.event) || isDatabaseCorrupted(payload.event)
+  ) {
+    console.warn('[APP]', `Event type is: "${payload.event}".  Will be ignored.`);
+
+    return res.json(createMessage(200, 'OK'));
+  }
+
+  // retrieve cached image
+  let image = await redis.getBuffer(key);
+
+  // save new image
+  if (!image && req.file && req.file.buffer) {
+    console.log('[REDIS]', `Saving new image ${key}`);
+    image = await sharp(req.file.buffer)
+      .resize(75, 75)
+      .background('white')
+      .embed()
+      .toBuffer();
+
+    redis.set(key, image, 'EX', SEVEN_DAYS);
+  } else {
+    console.log('[REDIS]', `Using cached image ${key}`);
+  }
+
+  let location = '';
+
+  if (isVideo && payload.Player && payload.Player.publicAddress) {
+    location = await getLocation(payload.Player.publicAddress);
+  }
+
+  const action = getAction(payload);
+
+  // post to slack
+  if (postToSlack) {
+    if (image) {
+      console.log('[SLACK]', `Sending ${key} with image`);
+      notifySlack(appURL + '/images/' + key, payload, location, action);
+    } else {
+      console.log('[SLACK]', `Sending ${key} without image`);
+      notifySlack(null, payload, location, action);
+    }
+  }
+
+  // post to discord
+  if (postToDiscord) {
+    if (image) {
+      console.log('[DISCORD]', `Sending ${key} with image`);
+      notifyDiscord(appURL + '/images/' + key, payload, location, action);
+    } else {
+      console.log('[DISCORD]', `Sending ${key} without image`);
+      notifyDiscord(null, payload, location, action);
+    }
+  }
+
+  return res.json(createMessage(200, 'OK'));
 });
 
 //
 // image route
 
 app.get('/images/:key', async (req, res, next) => {
-    const exists = await redis.exists(req.params.key);
+  const exists = await redis.exists(req.params.key);
 
-    if (!exists) {
-        return next();
-    }
+  if (!exists) {
+    return next();
+  }
 
-    const image = await redis.getBuffer(req.params.key);
-    sharp(image).jpeg().pipe(res);
+  const image = await redis.getBuffer(req.params.key);
+  sharp(image).jpeg().pipe(res);
 });
 
 //
 // ping route
 
 app.get('/ping', async (req, res, next) => {
-    return res.json(createMessage(200, 'OK'));
+  return res.json(createMessage(200, 'OK'));
 });
 
 //
 // error handlers
 
 app.use((req, res, next) => {
-    next(createErrorMessage(404, 'Not Found'));
+  next(createErrorMessage(404, 'Not Found'));
 });
 
 app.use((err, req, res, next) => {
-    const statusCode = err.status || 500;
-    res.status(statusCode);
-    res.json(generateErrorResponse(statusCode, err.message));
+  const statusCode = err.status || 500;
+  res.status(statusCode);
+  res.json(generateErrorResponse(statusCode, err.message));
 });
 
 //
@@ -230,215 +229,215 @@ setInterval(() => request.get(`${appURL}/ping`), 300000);
 // helpers
 
 function getLocation(ip) {
-    return request.get(`http://api.ipstack.com/${ip}?access_key=${process.env.IPSTACK_KEY}`, {json: true});
+  return request.get(`http://api.ipstack.com/${ip}?access_key=${process.env.IPSTACK_KEY}`, {json: true});
 }
 
 function formatTitle(metadata) {
-    if (metadata.grandparentTitle) {
-        return metadata.grandparentTitle;
-    }
+  if (metadata.grandparentTitle) {
+    return metadata.grandparentTitle;
+  }
 
-    let ret = metadata.title;
+  let ret = metadata.title;
 
-    if (metadata.year) {
-        ret += ` (${metadata.year})`;
-    }
+  if (metadata.year) {
+    ret += ` (${metadata.year})`;
+  }
 
-    return ret;
+  return ret;
 }
 
 function formatSubtitle(metadata) {
-    let ret = '';
+  let ret = '';
 
-    if (metadata.grandparentTitle) {
-        if (metadata.type === 'track') {
-            ret = metadata.parentTitle;
-        } else if (metadata.index && metadata.parentIndex) {
-            ret = `S${metadata.parentIndex} E${metadata.index}`;
-        } else if (metadata.originallyAvailableAt) {
-            ret = metadata.originallyAvailableAt;
-        }
-
-        if (metadata.title) {
-            ret += ' - ' + metadata.title;
-        }
-    } else if (metadata.type === 'movie') {
-        ret = metadata.tagline;
+  if (metadata.grandparentTitle) {
+    if (metadata.type === 'track') {
+      ret = metadata.parentTitle;
+    } else if (metadata.index && metadata.parentIndex) {
+      ret = `S${metadata.parentIndex} E${metadata.index}`;
+    } else if (metadata.originallyAvailableAt) {
+      ret = metadata.originallyAvailableAt;
     }
 
-    return ret;
+    if (metadata.title) {
+      ret += ' - ' + metadata.title;
+    }
+  } else if (metadata.type === 'movie') {
+    ret = metadata.tagline;
+  }
+
+  return ret;
 }
 
 function notifySlack(imageUrl, payload, location, action) {
-    let locationText = '';
+  let locationText = '';
 
-    if (location) {
-        const state = location.country_code === 'US' ? location.region_name : location.country_name;
-        locationText = `near ${location.city}, ${state}`;
-    }
+  if (location) {
+    const state = location.country_code === 'US' ? location.region_name : location.country_name;
+    locationText = `near ${location.city}, ${state}`;
+  }
 
-    // DKTODO: temporary fix
-    const title = formatTitle(payload.Metadata);
+  // DKTODO: temporary fix
+  const title = formatTitle(payload.Metadata);
 
-    slack.webhook(
-        {
-            slackChannel,
-            username: 'Plex',
-            icon_emoji: ':plex:',
-            attachments: [{
-                fallback: `${title} ${action} by ${payload.Account.title}`,
-                color: '#a67a2d',
-                title: formatTitle(payload.Metadata),
-                text: formatSubtitle(payload.Metadata),
-                thumb_url: imageUrl,
-                footer: `${action} by ${payload.Account.title} on ${payload.Player.title} from ${payload.Server.title} ${locationText}`,
-                footer_icon: payload.Account.thumb
-            }]
-        },
-        () => null
-    );
+  slack.webhook(
+    {
+      slackChannel,
+      username: 'Plex',
+      icon_emoji: ':plex:',
+      attachments: [{
+        fallback: `${title} ${action} by ${payload.Account.title}`,
+        color: '#a67a2d',
+        title: formatTitle(payload.Metadata),
+        text: formatSubtitle(payload.Metadata),
+        thumb_url: imageUrl,
+        footer: `${action} by ${payload.Account.title} on ${payload.Player.title} from ${payload.Server.title} ${locationText}`,
+        footer_icon: payload.Account.thumb
+      }]
+    },
+    () => null
+  );
 }
 
 function notifyDiscord(imageUrl, payload, location, action) {
-    let locationText = '';
+  let locationText = '';
 
-    if (location) {
-        const state = location.country_code === 'US' ? location.region_name : location.country_name;
-        locationText = `near ${location.city}, ${state}`;
+  if (location) {
+    const state = location.country_code === 'US' ? location.region_name : location.country_name;
+    locationText = `near ${location.city}, ${state}`;
+  }
+
+  discordClient.channels.get(discordChannel).send({
+    embed: {
+      color: 3447003,
+      title: formatTitle(payload.Metadata),
+      description: formatSubtitle(payload.Metadata),
+      timestamp: new Date(),
+      footer: {
+        icon_url: 'https://dl2.macupdate.com/images/icons256/42311.png?d=1535042731',
+        text: `${action} from ${payload.Server.title} ${locationText}`
+      }
     }
-
-    discordClient.channels.get(discordChannel).send({
-        embed: {
-            color: 3447003,
-            title: formatTitle(payload.Metadata),
-            description: formatSubtitle(payload.Metadata),
-            timestamp: new Date(),
-            footer: {
-                icon_url: 'https://dl2.macupdate.com/images/icons256/42311.png?d=1535042731',
-                text: `${action} from ${payload.Server.title} ${locationText}`
-            }
-        }
-    });
+  });
 }
 
 function isMediaPlay(mediaEvent) {
-    return mediaEvent === MEDIA_PLAYING;
+  return mediaEvent === MEDIA_PLAYING;
 }
 
 function isMediaPause(mediaEvent) {
-    return mediaEvent === MEDIA_PAUSED;
+  return mediaEvent === MEDIA_PAUSED;
 }
 
 function isMediaResume(mediaEvent) {
-    return mediaEvent === MEDIA_RESUMED;
+  return mediaEvent === MEDIA_RESUMED;
 }
 
 function isMediaStop(mediaEvent) {
-    return mediaEvent === MEDIA_STOPPED;
+  return mediaEvent === MEDIA_STOPPED;
 }
 
 function isMediaScrobble(mediaEvent) {
-    return mediaEvent === MEDIA_VIEWED;
+  return mediaEvent === MEDIA_VIEWED;
 }
 
 // DKTODO: only showing "Season Nr."
 function isMediaRate(mediaEvent) {
-    return mediaEvent === MEDIA_RATED;
+  return mediaEvent === MEDIA_RATED;
 }
 
 function isNewMediaAdded(mediaEvent) {
-    return mediaEvent === LIBRARY_MEDIA_ADDED;
+  return mediaEvent === LIBRARY_MEDIA_ADDED;
 }
 
 function isNewMediaAddedOnDeck(mediaEvent) {
-    return mediaEvent === LIBRARY_MEDIA_ADDED_ON_DECK;
+  return mediaEvent === LIBRARY_MEDIA_ADDED_ON_DECK;
 }
 
 function isDatabaseBackupCompleted(mediaEvent) {
-    return mediaEvent === ADMIN_DATABASE_BACKUP;
+  return mediaEvent === ADMIN_DATABASE_BACKUP;
 }
 
 function isDatabaseCorrupted(mediaEvent) {
-    return mediaEvent === ADMIN_DATABASE_CORRUPTED;
+  return mediaEvent === ADMIN_DATABASE_CORRUPTED;
 }
 
 function isNewDeviceAdded(mediaEvent) {
-    return mediaEvent === NEW_DEVICE;
+  return mediaEvent === NEW_DEVICE;
 }
 
 function isPlaybackStarted(mediaEvent) {
-    return mediaEvent === PLAYBACK_STARTED;
+  return mediaEvent === PLAYBACK_STARTED;
 }
 
 function getAction(payload) {
-    switch (payload.event) {
-        case MEDIA_PLAYING:
-            return 'playing';
+  switch (payload.event) {
+    case MEDIA_PLAYING:
+      return 'playing';
 
-        case MEDIA_PAUSED:
-            return 'paused';
+    case MEDIA_PAUSED:
+      return 'paused';
 
-        case MEDIA_RESUMED:
-            return 'resumed';
+    case MEDIA_RESUMED:
+      return 'resumed';
 
-        case MEDIA_STOPPED:
-            return 'stopped';
+    case MEDIA_STOPPED:
+      return 'stopped';
 
-        case MEDIA_VIEWED:
-            return 'viewed';
+    case MEDIA_VIEWED:
+      return 'viewed';
 
-        case MEDIA_RATED:
-            return getValueForMediaRated(payload);
+    case MEDIA_RATED:
+      return getValueForMediaRated(payload);
 
-        default:
-            console.error('[APP]', `Unknown event: "${payload.event}"`);
-            return 'unknown';
-    }
+    default:
+      console.error('[APP]', `Unknown event: "${payload.event}"`);
+      return 'unknown';
+  }
 }
 
 function getValueForMediaRated(payload) {
-    let ratedAction = 'rated';
+  let ratedAction = 'rated';
 
-    if (payload.rating > 0) {
-        ratedAction += ' ';
-        for (let i = 0; i < payload.rating / 2; i++) {
-            ratedAction += ':star:';
-        }
+  if (payload.rating > 0) {
+    ratedAction += ' ';
+    for (let i = 0; i < payload.rating / 2; i++) {
+      ratedAction += ':star:';
     }
+  }
 
-    return ratedAction;
+  return ratedAction;
 }
 
 function isLibrarySectionTypeVideo(payload) {
-    return (['movie', 'episode'].includes(payload.Metadata.type));
+  return (['movie', 'episode'].includes(payload.Metadata.type));
 }
 
 function isLibrarySectionTypeMusic(payload) {
-    return (payload.Metadata.type === 'track');
+  return (payload.Metadata.type === 'track');
 }
 
 function generateImageKey(payload) {
-    return sha1(payload.Server.uuid + payload.Metadata.ratingKey);
+  return sha1(payload.Server.uuid + payload.Metadata.ratingKey);
 }
 
 function generateErrorResponse(statusCode, message) {
-    return {
-        errors: [
-            {
-                status: statusCode,
-                message: message,
-            }
-        ]
-    };
+  return {
+    errors: [
+      {
+        status: statusCode,
+        message
+      }
+    ]
+  };
 }
 
 function createErrorMessage(statusCode, message) {
-    const err = new Error(message);
-    err.status = statusCode;
+  const err = new Error(message);
+  err.status = statusCode;
 
-    return err;
+  return err;
 }
 
 function createMessage(statusCode, message) {
-    return {status: statusCode, message: message};
+  return {status: statusCode, message};
 }
