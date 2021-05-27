@@ -410,11 +410,11 @@ function getValueForMediaRated(payload) {
 }
 
 function isLibrarySectionTypeVideo(payload) {
-    return payload.Metadata.librarySectionType === 'movie' || payload.Metadata.librarySectionType === 'show';
+    return (['movie', 'episode'].includes(payload.Metadata.type));
 }
 
 function isLibrarySectionTypeMusic(payload) {
-    return payload.Metadata.librarySectionType === 'artist';
+    return (payload.Metadata.type === 'track');
 }
 
 function generateImageKey(payload) {
