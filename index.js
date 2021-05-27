@@ -141,14 +141,29 @@ app.post('/', upload.single('thumb'), async (req, res, next) => {
 
   // save new image
   if (!image && req.file && req.file.buffer) {
-    console.log('[REDIS]', `Saving new image ${key}`);
-    image = await sharp(req.file.buffer)
-      .resize(75, 75)
-      .background('white')
-      .embed()
-      .toBuffer();
+    let buffer;
+    if (req.file && req.file.buffer) {
+      buffer = req.file.buffer;
+    } else if (payload.thumb) {
+      console.log('[REDIS]', `Retrieving image from  ${payload.thumb}`);
+      buffer = await request.get({
+        uri: payload.thumb,
+        encoding: null
+      });
+    }
+    if (buffer) {
+      image = await sharp(buffer)
+        .resize({
+          height: 75,
+          width: 75,
+          fit: 'contain',
+          background: 'white'
+        })
+        .toBuffer();
 
-    redis.set(key, image, 'EX', SEVEN_DAYS);
+      console.log('[REDIS]', `Saving new image ${key}`);
+      redis.set(key, image, 'EX', SEVEN_DAYS);
+    }
   } else {
     console.log('[REDIS]', `Using cached image ${key}`);
   }
