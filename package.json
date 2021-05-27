@@ -27,6 +27,6 @@
   },
   "devDependencies": {
     "bufferutil": "~3.0.0",
-    "eslint": "~3.19.0"
+    "eslint": "~6.2.0"
   }
 }
